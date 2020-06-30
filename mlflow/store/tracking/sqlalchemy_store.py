@@ -571,7 +571,7 @@ class SqlAlchemyStore(AbstractStore):
                 session.flush()
                 session.commit()
 
-            except sqlalchemy.exc.IntegrityError as e:
+            except sqlalchemy.exc.IntegrityError:
                 session.rollback()
 
                 if auto_new and len(metrics) > 1:
