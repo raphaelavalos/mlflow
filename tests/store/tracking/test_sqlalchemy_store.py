@@ -682,6 +682,11 @@ class TestSqlAlchemyStoreSqlite(unittest.TestCase, AbstractStoreTest):
 
         assert len(run_metrics) == 1
         assert run_metrics[metric_name] == 40
+        metric_obj = run_data._metric_objs[0]
+        assert metric_obj.key == metric_name
+        assert metric_obj.step == 3
+        assert metric_obj.timestamp == 3
+        assert metric_obj.value == 40
 
     def test_log_metrics_deactivated_batch_mode(self):
 
@@ -694,7 +699,7 @@ class TestSqlAlchemyStoreSqlite(unittest.TestCase, AbstractStoreTest):
             (metric_name, 20, 1, 1),
             (metric_name, 40, 3, 3),  # last step, should be stored as last metric
             (metric_name, 50, 2, 2),
-            (metric_name, 50, 2, 2),
+            (metric_name, 50, 2, 2),  # duplicated -> batch mode will be deactivated
         ]
 
         metric_entities = [Metric(*metric_tuple) for metric_tuple in metric_tuples]
@@ -711,6 +716,10 @@ class TestSqlAlchemyStoreSqlite(unittest.TestCase, AbstractStoreTest):
 
         assert len(run_metrics) == 1
         assert run_metrics[metric_name] == 40
+        assert metric_obj.key == metric_name
+        assert metric_obj.step == 3
+        assert metric_obj.timestamp == 3
+        assert metric_obj.value == 40
 
     def test_log_metrics_allows_multiple_values_at_same_ts_and_run_data_uses_max_ts_value(self):
 
