@@ -582,13 +582,13 @@ class SqlAlchemyStore(AbstractStore):
                 # present, we assume that the ``latest_metrics`` table already accounts for
                 # its presence
 
-                for logged_metric_list in metrics_per_key.values():
-                    # ToDo: move grouping by metric name functionality
-                    #  to _update_latest_metric_if_necessary
-                    self._update_latest_metric_if_necessary(
-                        logged_metrics=logged_metric_list, session=session
-                    )
-
+                # for logged_metric_list in metrics_per_key.values():
+                #     # ToDo: move grouping by metric name functionality
+                #     #  to _update_latest_metric_if_necessary
+                #     self._update_latest_metric_if_necessary(
+                #         logged_metrics=logged_metric_list, session=session
+                #     )
+                self._update_latest_metric_if_necessary_test(metrics_per_key, session, run_id)
                 # Explicitly commit the session in order to catch potential integrity errors
                 # if commit fails, a metric is already in the store (same run id, step,
                 # timestamp, and value) and we have to store each metric individually
@@ -602,6 +602,61 @@ class SqlAlchemyStore(AbstractStore):
                 # Insert metrics with disabled batch mode one after another
                 if batch_mode and len(metrics) > 1:
                     self.log_metrics(run_id, metrics, batch_mode=False)
+
+    @staticmethod
+    def _update_latest_metric_if_necessary_test(metrics_per_key, session, run_id):
+        print("update_latest_metric")
+
+        def _compare_metrics(metric_a, metric_b):
+            """
+            :return: True if ``metric_a`` is strictly more recent than ``metric_b``, as determined
+                     by ``step``, ``timestamp``, and ``value``. False otherwise.
+            """
+            return (metric_a.step, metric_a.timestamp, metric_a.value) > (
+                metric_b.step,
+                metric_b.timestamp,
+                metric_b.value,
+            )
+
+        # Fetch the latest metric value corresponding to the specified run_id and metric key and
+        # lock its associated row for the remainder of the transaction in order to ensure
+        # isolation
+        latest_metrics = {
+            latest_metric.key: latest_metric
+            for latest_metric in
+            session.query(SqlLatestMetric)
+                .filter(
+                SqlLatestMetric.run_uuid == run_id,
+            )
+                .with_for_update()
+                .all()
+        }
+        for key, metrics in metrics_per_key.items():
+            logged_metric = None
+            if metrics is not None:
+                for m in metrics:
+                    if logged_metric is None or _compare_metrics(m,
+                                                                 logged_metric):
+                        logged_metric = m
+
+            if logged_metric is None:
+                raise MlflowException(
+                    "Invalid parameters for _update_latest_metric_if_necessary. "
+                    "Please set logged_metrics",
+                    INVALID_PARAMETER_VALUE,
+                )
+            if key not in latest_metrics or _compare_metrics(logged_metric,
+                                                             latest_metrics[key]):
+                session.merge(
+                    SqlLatestMetric(
+                        run_uuid=logged_metric.run_uuid,
+                        key=logged_metric.key,
+                        value=logged_metric.value,
+                        timestamp=logged_metric.timestamp,
+                        step=logged_metric.step,
+                        is_nan=logged_metric.is_nan,
+                    )
+                )
 
     @staticmethod
     def _update_latest_metric_if_necessary(logged_metrics, session):
